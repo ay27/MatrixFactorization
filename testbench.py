@@ -1,6 +1,7 @@
 # Created by ay27 at 16/3/14
 import unittest
 import numpy as np
+import time
 
 
 def EuclideanDistance(A, B):
@@ -11,7 +12,8 @@ def EuclideanDistance(A, B):
     shape = A.shape
     sum = 0
     for ii in range(shape[0]):
-        sum += EuclideanDistance(A[ii], B[ii])
+        for jj in range(shape[1]):
+            sum += pow(A[ii][jj]-B[ii][jj], 2)
     return sum
 
 
@@ -21,12 +23,28 @@ class MyTestCase(unittest.TestCase):
         N = 10
         M = 15
         K = 5
+        steps = 2000
         R = np.random.rand(N, M)*10
         P = np.random.rand(N, K)
         Q = np.random.rand(K, M)
-        nP, nQ = naive_mf.naive_mf(R, P, Q, K, steps=2000)
+        st = time.time()
+        nP, nQ = naive_mf.naive_mf(R, P, Q, K, steps=steps)
         nR = np.dot(nP, nQ)
+        print('naive mf: steps = %d, time = %f' % (steps, time.time() - st))
         # print(EuclideanDistance(R, nR))
+
+    def test_sparse_mf(self):
+        import naive_mf
+        from data.DataProcessor import read_data
+        N, M, sparse_R = read_data('data/movie_data_718.txt')
+        K = 20
+        steps = 5
+        P = np.random.rand(N, K)
+        Q = np.random.rand(K, M)
+        st = time.time()
+        nP, nQ = naive_mf.naive_sparse_mf(sparse_R, P, Q, K, steps=steps)
+        nR = np.dot(nP, nQ)
+        print('naive sparse mf: steps = %d, time = %f' % (steps, time.time() - st))
 
 if __name__ == '__main__':
     unittest.main()
