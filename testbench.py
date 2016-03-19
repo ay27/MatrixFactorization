@@ -2,6 +2,8 @@
 import unittest
 import numpy as np
 import time
+import copy
+import matplotlib.pyplot as plt
 
 
 def EuclideanDistance(A, B):
@@ -20,15 +22,20 @@ def EuclideanDistance(A, B):
 class MyTestCase(unittest.TestCase):
     def test_naive_mf(self):
         import naive_mf
-        N = 10
-        M = 15
-        K = 5
-        steps = 2000
-        R = np.random.rand(N, M)*10
-        P = np.random.rand(N, K)
-        Q = np.random.rand(K, M)
+        N = 50
+        M = 100
+        K = 20
+        steps = 200
+        RR = np.random.rand(N, M)*10
+        PP = np.random.rand(N, K)
+        QQ= np.random.rand(K, M)
         st = time.time()
-        nP, nQ = naive_mf.naive_mf(R, P, Q, K, steps=steps)
+        nP, nQ, ee1 = naive_mf.naive_mf(copy.deepcopy(RR), copy.deepcopy(PP), copy.deepcopy(QQ), K, steps=steps)
+        print('ok1')
+        nP, nQ, ee2 = naive_mf.naive_mf1(RR, PP, QQ, K, steps=steps)
+        plt.plot(list(range(len(ee1))), ee1, 'r-')
+        plt.plot(list(range(len(ee2))), ee2, 'b*')
+        plt.show()
         nR = np.dot(nP, nQ)
         print('naive mf: steps = %d, time = %f' % (steps, time.time() - st))
         # print(EuclideanDistance(R, nR))
