@@ -1,86 +1,125 @@
 # Created by ay27 at 16/3/17
 import multiprocessing as mp
 import hashlib
-
 from ps import g
+import numpy as np
+
+from ps.util import VectorClock, NetPack
+
+
+class Cache:
+    class Row:
+        def __init__(self, key, value, vc):
+            self.key = key
+            self.vc = vc
+            self.value = value
+
+    def __init__(self):
+        self._store = dict()
+        self.not_flush = list()
+
+    def get(self, key):
+        return self._store.get(key)
+
+    def set(self, key, value, vc):
+        self._store[key] = Cache.Row(key, value, vc)
+
+    def inc(self, key, value, vc):
+        _row = self._store.get(key)
+        if _row is None:
+            self._store[key] = Cache.Row(key, value, vc)
+        else:
+            self._store[key].value += value
+        self.not_flush.append(key)
+
+    def flush(self):
+        self.not_flush.clear()
+
+
+class RoadMap:
+    def __init__(self):
+        self._map = dict()
+
+    def get(self, key):
+        return self._map.get(key)
+
+    def find_road(self, key):
+        dest = self._map.get(key)
+        if dest is None:
+            dest = int(hashlib.md5(key.encode()).hexdigest(), 16) % g.ps_num
+            self._map[key] = dest
+        return dest
 
 
 class Client(mp.Process):
-    """
-    cache 格式:[ts, key, data], ts是int型时间戳, key是str型键
-    cache是一个环装结构,当cache满后,从头开始写.因为ts的关系,cache是以ts递增保存的,故查找时只需沿一个方向扫描即可
-    client与server通信格式:(cmd, ts, key[, data]), cmd是push或pull, ts是时间戳, key是键, data可选(当cmd==push时必选)
-    """
-
-    __magic_num = 3454756789
-
-    def __init__(self, comm, ps_num, stale=1, cache_size=1024 * 1000):
+    def __init__(self, comm):
         super().__init__()
         self.comm = comm
-        self.ps_num = ps_num
-        self.stale = stale
-        self.cache_sz = cache_size
-        # ts默认值设置为一个很小的负数,避免在cache查找时判断错误
-        self.cache = list(map(lambda x: [-12345678, 0, 0], range(cache_size)))
-        self.cache_flag = 0
-        self.route_map = dict()
-        self.left_p, self.right_p = mp.Pipe()
+        self.cache = Cache()
+        self.cache_tail = 0
+        self.route_map = RoadMap()
+        self.outer, self.inner = mp.Pipe()
+        # 每一个worker的时钟
+        self.clocks = np.array([0 for _ in range(g.client_num)])
 
-    # 根据key的md5值划分服务器, 相同的key总能分配到同一个服务器
-    # TODO 需要测试这种划分方式是否均衡
-    def _find_route(self, key):
-        dest = self.route_map.get(key)
-        if dest is None:
-            dest = int(hashlib.md5(key.encode()).hexdigest(), 16) % self.ps_num
-            self.route_map[key] = dest
-        return dest
+    def pull(self, rank, key):
+        self.outer.send('%s %d %s' % (g.CMD_PULL, rank, key))
+        return self.outer.recv()
 
-    def pull(self, ts, key):
-        self.left_p.send('%s %d %s' % (g.CMD_PULL, ts, key))
-        return self.left_p.recv()
+    def inc(self, rank, key, value):
+        self.outer.send('%s %d %s' % (g.CMD_INC, rank, key))
+        self.outer.send(value)
 
-    def inc(self, ts, key, value):
-        self.left_p.send('%s %d %s' % (g.CMD_INC, ts, key))
-        self.left_p.send(value)
-
-    def clock(self, source_rank, ):
-
-    # 同一个ts和key应该总能生成同一个tag
-    def _gen_tag(self, ts, key):
-        return int(hashlib.md5(('%d%s' % (ts, key)).encode()).hexdigest(), 16) % Client.__magic_num
+    def clock(self, rank):
+        self.clocks[rank] += 1
+        self.outer.send('%s %d %s' % (g.CMD_FLUSH, rank, None))
 
     def run(self):
         while True:
-            cmd, ts, key = self.right_p.recv().split()
-            dest = self._find_route(key)
-            tag = self._gen_tag(ts, key)
+            cmd, rank, key = self.inner.recv().split()
             if cmd == g.CMD_PULL:
-                ii = self.cache_flag
-                while self.cache[ii][0] >= ts - self.stale and self.cache[ii][1] != key:
-                    ii -= 1
-                    if ii == -1:
-                        ii = self.cache_sz - 1
-                if self.cache[ii][0] < ts - self.stale:
-                    self.comm.Send((cmd, [ts, key]), dest=dest, tag=tag)
-                    r_ts, r_key, r_data = self.comm.Recv(source=dest, tag=tag)
-                    self.right_p.send(r_data)
-                    self.cache_it(r_ts, r_key, r_data)
-                    continue
-                # cache命中
-                if self.cache[ii][1] == key:
-                    self.right_p.send(self.cache[ii][2])
-                    continue
+                self._do_pull(rank, key)
             elif cmd == g.CMD_INC:
-                data = self.right_p.recv()
-                self.comm.Send((cmd, [ts, key, data]), dest=dest, tag=tag)
-                # cache it
-                self.cache_it(ts, key, data)
+                self._do_inc(rank, key)
+            elif cmd == g.CMD_FLUSH:
+                self._do_flush(rank)
             else:
                 raise AttributeError('cmd must be inc or pull')
 
-    def cache_it(self, ts, key, data):
-        self.cache[self.cache_flag] = [ts, key, data]
-        self.cache_flag += 1
-        # cache是一个环
-        if self.cache_flag == self.cache_sz:
-            self.cache_flag = 0
+    def _do_pull(self, rank, key):
+        row = self.cache.get(key)
+        if row is None or row.vc.scope() > g.STALE:
+            value = self._remote_pull(rank, key)
+            self.inner.send(value)
+        else:
+            self.inner.send(row.value)
+
+    def _do_inc(self, rank, key):
+        value = self.inner.recv()
+        self.cache.inc(key, value, VectorClock(self.clocks))
+
+    def _do_flush(self, rank):
+        for key in self.cache.not_flush:
+            self._remote_inc(rank, self.cache.get(key))
+        self.cache.flush()
+
+    def _remote_pull(self, rank, key, vc=None):
+        dest = self.route_map.find_road(key)
+        tag = self._gen_tag(rank, key)
+        self.comm.Send(NetPack(g.CMD_PULL, key, None, vc, rank, dest, tag), dest=dest, tag=tag)
+        pack = self.comm.Recv(source=dest, tag=tag)
+        # cache it
+        self.cache.set(key, pack.value, pack.vc)
+        return pack.value
+
+    def _remote_inc(self, rank, row):
+        key = row.key
+        dest = self.route_map.find_road(key)
+        tag = self._gen_tag(rank, key)
+        self.comm.Send(NetPack(g.CMD_INC, key, row.value, row.vc, rank, dest, tag), dest=dest, tag=tag)
+
+    __magic_num = 3454756789
+
+    @staticmethod
+    def _gen_tag(rank, key):
+        return int(hashlib.md5(('%d%s' % (rank, key)).encode()).hexdigest(), 16) % Client.__magic_num
