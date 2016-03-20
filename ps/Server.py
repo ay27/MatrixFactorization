@@ -30,16 +30,16 @@ class Store:
 
 class QueryQueue:
     def __init__(self):
-        self.queue = list()
+        self.queue = dict()
 
-    def insert(self, pack_st):
-        self.queue.append(pack_st)
+    def insert(self, key, pack, st):
+        self.queue[key] = (pack, st)
 
-    def remove(self, pack_st):
-        self.queue.remove(pack_st)
+    def remove(self, key):
+        self.queue.pop(key)
 
-    def __iter__(self):
-        return iter(self.queue)
+    def get(self, key):
+        return self.queue.get(key)
 
 
 class Server(mp.Process):
@@ -57,12 +57,21 @@ class Server(mp.Process):
                 continue
             if pack.cmd == g.CMD_INC:
                 self.store.inc(pack.key, pack.value, pack.vc)
+                self.scan_query(pack)
             elif pack.cmd == g.CMD_PULL:
                 row = self.store.get(pack.key)
                 if row is None:
-                    self.query.insert((pack, st))
+                    self.query.insert(pack.key, pack, st)
                 else:
                     r_pack = NetPack(pack.cmd, pack.key, row.value, row.vc, pack.src, pack.dest, pack.tag)
                     self.comm.Send(r_pack, dest=st.source, tag=st.tag)
             else:
                 continue
+
+    def scan_query(self, pack):
+        pair = self.query.get(pack.key)
+        if pair is None:
+            return
+        pack, st = pair
+        vc = self.store.get(pack.key).vc
+

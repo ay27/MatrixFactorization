@@ -19,10 +19,8 @@ class VectorClock:
         else:
             self._clock = np.array([item for item in clocks])
 
-    def scope(self):
-        max_value = np.max(self._clock)
-        min_value = np.min(self._clock)
-        return max_value - min_value
+    def get_min(self):
+        return min(self._clock)
 
     def combined(self, v):
         if len(v) != len(self._clock):
@@ -33,6 +31,9 @@ class VectorClock:
     def tick(self, rank):
         self._clock[rank] += 1
 
+    @property
+    def min(self):
+        return min(self._clock)
 
 class NetPack:
     def __init__(self, cmd, key, value, vc, src, dest, tag):

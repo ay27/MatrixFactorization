@@ -88,7 +88,7 @@ class Client(mp.Process):
 
     def _do_pull(self, rank, key):
         row = self.cache.get(key)
-        if row is None or row.vc.scope() > g.STALE:
+        if row is None or row.vc[rank]-g.STALE > row.vc.min:
             value = self._remote_pull(rank, key)
             self.inner.send(value)
         else:
