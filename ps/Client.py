@@ -70,9 +70,11 @@ class Client(mp.Process):
         self.outer.send('%s %d %s' % (g.CMD_INC, rank, key))
         self.outer.send(value)
 
-    def clock(self, rank):
+    def clock(self, rank, expt):
         self.clocks[rank] += 1
         self.outer.send('%s %d %s' % (g.CMD_FLUSH, rank, None))
+        self.outer.send('%s %d %d' % (g.CMD_EXPT, rank, expt))
+
 
     def run(self):
         while True:
@@ -83,6 +85,8 @@ class Client(mp.Process):
                 self._do_inc(rank, key)
             elif cmd == g.CMD_FLUSH:
                 self._do_flush(rank)
+            elif cmd == g.CMD_EXPT:
+                self._do_expt(rank, key)
             else:
                 raise AttributeError('cmd must be inc or pull')
 
@@ -103,6 +107,9 @@ class Client(mp.Process):
             self._remote_inc(rank, self.cache.get(key))
         self.cache.flush()
 
+    def _do_expt(self, rank, expt):
+        self._remote_expt(rank, expt)
+
     def _remote_pull(self, rank, key, vc=None):
         dest = self.route_map.find_road(key)
         tag = self._gen_tag(rank, key)
@@ -118,8 +125,14 @@ class Client(mp.Process):
         tag = self._gen_tag(rank, key)
         self.comm.Send(NetPack(g.CMD_INC, key, row.value, row.vc, rank, dest, tag), dest=dest, tag=tag)
 
+    def _remote_expt(self, rank, expt):
+        dest = g.EXPT_MACHINE
+        tag = rank
+        self.comm.send(NetPack(g.CMD_EXPT, None, expt, None, rank, 0, tag), dest=dest, tag=tag)
+
     __magic_num = 3454756789
 
     @staticmethod
     def _gen_tag(rank, key):
         return int(hashlib.md5(('%d%s' % (rank, key)).encode()).hexdigest(), 16) % Client.__magic_num
+

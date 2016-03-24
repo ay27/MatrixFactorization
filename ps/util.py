@@ -13,14 +13,12 @@ class VectorClock:
     tick函数: 使某个时钟滴答走一步
     scope函数: 得到该向量最大值与最小值的差距
     """
+
     def __init__(self, clocks=None):
         if clocks is None:
             self._clock = np.array([0 for _ in range(g.client_num)])
         else:
             self._clock = np.array([item for item in clocks])
-
-    def get_min(self):
-        return min(self._clock)
 
     def combined(self, v):
         if len(v) != len(self._clock):
@@ -34,6 +32,7 @@ class VectorClock:
     @property
     def min(self):
         return min(self._clock)
+
 
 class NetPack:
     def __init__(self, cmd, key, value, vc, src, dest, tag):

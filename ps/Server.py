@@ -9,7 +9,7 @@ from ps.util import NetPack
 class Store:
     class Row:
         def __init__(self, key, value, vc):
-            self.key= key
+            self.key = key
             self.value = value
             self.vc = vc
 
@@ -48,6 +48,9 @@ class Server(mp.Process):
         self.comm = comm
         self.store = Store()
         self.query = QueryQueue()
+        my_rank = self.comm.Get_Rank()
+        if my_rank == g.EXPT_MACHINE:
+            self.expt = dict()
 
     def run(self):
         while True:
@@ -56,22 +59,42 @@ class Server(mp.Process):
             if not isinstance(pack, NetPack):
                 continue
             if pack.cmd == g.CMD_INC:
-                self.store.inc(pack.key, pack.value, pack.vc)
-                self.scan_query(pack)
+                self._do_inc(pack)
             elif pack.cmd == g.CMD_PULL:
-                row = self.store.get(pack.key)
-                if row is None:
-                    self.query.insert(pack.key, pack, st)
-                else:
-                    r_pack = NetPack(pack.cmd, pack.key, row.value, row.vc, pack.src, pack.dest, pack.tag)
-                    self.comm.Send(r_pack, dest=st.source, tag=st.tag)
+                self._do_pull(pack, st)
+            elif pack.cmd == g.CMD_EXPT:
+                self._do_expt(pack)
             else:
                 continue
 
-    def scan_query(self, pack):
-        pair = self.query.get(pack.key)
+    def scan_query(self, new_pack):
+        pair = self.query.get(new_pack.key)
         if pair is None:
             return
-        pack, st = pair
-        vc = self.store.get(pack.key).vc
+        o_pack, st = pair
+        vc = self.store.get(new_pack.key).vc
+        if abs(o_pack.vc[o_pack.src] - vc.min) > g.STALE:
+            return
+        r_pack = NetPack(o_pack.cmd, o_pack.key, new_pack.value, vc, o_pack.src, o_pack.dest, o_pack.tag)
+        self.comm.Send(r_pack, dest=st.source, tag=st.tag)
 
+    def _do_inc(self, pack):
+        self.store.inc(pack.key, pack.value, pack.vc)
+        self.scan_query(pack)
+
+    def _do_pull(self, pack, st):
+        row = self.store.get(pack.key)
+        if row is None:
+            self.query.insert(pack.key, pack, st)
+        else:
+            r_pack = NetPack(pack.cmd, pack.key, row.value, row.vc, pack.src, pack.dest, pack.tag)
+            self.comm.Send(r_pack, dest=st.source, tag=st.tag)
+
+    def _do_expt(self, pack):
+        src = pack.src
+        value = pack.value
+        row = self.expt.get(src)
+        if row is None:
+            self.expt[src] = [value]
+        else:
+            self.expt[src].append(value)
