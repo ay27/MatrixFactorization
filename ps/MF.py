@@ -3,8 +3,10 @@ import numpy
 from ps.Client import Client
 
 
-def d_mf(comm, client, my_rank, local_data, local_P, k, steps=500, alpha=0.0002, beta=0.02):
+def d_mf(comm, local_data, local_P, k, steps=500, alpha=0.0002, beta=0.02):
     zeros = numpy.zeros(k)
+    client = Client(comm)
+    my_rank = comm.Get_rank()
     for row in local_data:
         client.inc(my_rank, row[1]-1, zeros)
     local_Q = dict()

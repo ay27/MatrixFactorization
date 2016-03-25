@@ -5,9 +5,13 @@ CMD_PULL = 'pull'
 CMD_FLUSH = 'flush'
 CMD_EXPT = 'expt'
 
-client_num = 10
-ps_num = 3
+PROCESS_EVERY_MACHINE = 2
+client_num = PROCESS_EVERY_MACHINE * 2
+ps_num = PROCESS_EVERY_MACHINE * 1
 
 STALE = 3
 
-EXPT_MACHINE = 0
+EXPT_MACHINE = client_num + ps_num - 1
+
+K = 20
+

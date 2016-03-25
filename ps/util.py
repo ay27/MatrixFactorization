@@ -19,19 +19,27 @@ class VectorClock:
             self._clock = np.array([0 for _ in range(g.client_num)])
         else:
             self._clock = np.array([item for item in clocks])
+        self.min_v = 1234567890
 
     def combined(self, v):
         if len(v) != len(self._clock):
             raise AttributeError('can not combined, length is not equal')
         for ii in range(len(v)):
             self._clock[ii] = max(self._clock[ii], v[ii])
+        self._check()
 
     def tick(self, rank):
         self._clock[rank] += 1
+        self._check()
 
     @property
     def min(self):
-        return min(self._clock)
+        return self.min_v
+
+    def _check(self):
+        for v in self._clock:
+            if v != 0 and v < self.min_v:
+                self.min_v = v
 
 
 class NetPack:
