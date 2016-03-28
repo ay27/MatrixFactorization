@@ -21,27 +21,34 @@ class VectorClock:
         else:
             tmp = copy.deepcopy(clocks)
             self._clock = np.array(tmp)
-        self.min_v = 1234567890
+        # self.min_v = 1234567890
 
     def combined(self, v):
         if len(v) != len(self._clock):
             raise AttributeError('can not combined, length is not equal')
         for ii in range(len(v)):
             self._clock[ii] = max(self._clock[ii], v[ii])
-        self._check()
+        # self._check()
 
     def tick(self, rank):
         self._clock[rank] += 1
-        self._check()
+        # self._check()
+
+    def __len__(self):
+        return len(self._clock)
 
     @property
     def min(self):
-        return self.min_v
-
-    def _check(self):
+        minv = 123456789
         for v in self._clock:
-            if v < self.min_v:
-                self.min_v = v
+            minv = min(minv, v)
+        return minv
+        # return self.min_v
+
+    # def _check(self):
+    #     for v in self._clock:
+    #         if v < self.min_v:
+    #             self.min_v = v
 
     def __getitem__(self, key):
         return self._clock[key]

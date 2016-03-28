@@ -20,7 +20,6 @@ class Store:
         return self._store.get(key)
 
     def inc(self, key, value, vc):
-        g.log('server inc %d %f %s' % (key, value, str(vc)))
         row = self._store.get(key)
         if row is None:
             self._store[key] = self.Row(key, value, vc)
@@ -45,7 +44,8 @@ class QueryQueue:
 
 class Server:
     def __init__(self, comm):
-        super().__init__()
+        self.log_file = open('log_S%d.log' % comm.Get_rank(), 'w')
+        self.log('server init')
         self.comm = comm
         self.store = Store()
         self.query = QueryQueue()
@@ -54,13 +54,17 @@ class Server:
             self.expt = dict()
         self.status = [True for _ in range(g.client_num)]
         self.STOP = False
+        self.log('init finish')
         self.run()
 
     def run(self):
+        self.log('server run')
+        self.log(self.STOP)
         while not self.STOP:
+            self.log('server waiting')
             st = MPI.Status()
             pack = self.comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=st)
-            g.log('%d recv %d %d %s' % (self.my_rank, st.source, st.tag, pack.cmd))
+            self.log('%d recv %d %d %s' % (self.my_rank, st.source, st.tag, pack.cmd))
             if not isinstance(pack, NetPack):
                 continue
             if pack.cmd == g.CMD_INC:
@@ -120,3 +124,7 @@ class Server:
             self.expt[0] += self.expt[jj]
         f = open('result.txt', 'w')
         f.write(str(self.expt[0]))
+
+    def log(self, msg):
+        # print('server %s' % msg)
+        self.log_file.write('%s\n' % msg)

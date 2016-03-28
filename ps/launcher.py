@@ -34,8 +34,12 @@ if __name__ == '__main__':
     wk_comm = comm.Create(wk_group)
     wk_group.Free()
 
+    print('rank = %d' % rank)
+    print('g.client_num = %d' % g.client_num)
     if rank >= g.client_num:
+        print('server')
         ser = Server(comm)
     else:
+        print('client')
         local_data = load_data(rank)
         d_mf(comm, local_data, np.zeros((local_data[-1][0], g.K)), g.K, 10)
