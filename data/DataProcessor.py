@@ -14,7 +14,7 @@ def read_data(file_path):
     with open(file_path, 'r') as file:
         for line in file:
             num = line.split()
-            tmp.append([int(num[0]), int(num[1]), float(num[3])])
+            tmp.append([int(num[0]), int(num[1]), int(num[3])])
             i = max(i, tmp[-1][0])
             j = max(j, tmp[-1][1])
     return i, j, numpy.array(tmp)

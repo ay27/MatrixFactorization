@@ -46,7 +46,7 @@ class RoadMap:
     def find_road(self, key):
         dest = self._map.get(key)
         if dest is None:
-            dest = int(hashlib.md5(key.encode()).hexdigest(), 16) % g.ps_num
+            dest = int(hashlib.md5(str(key).encode()).hexdigest(), 16) % g.ps_num
             self._map[key] = dest
         return dest
 
@@ -63,22 +63,29 @@ class Client(mp.Process):
         self.clocks = np.array([0 for _ in range(g.client_num)])
 
     def pull(self, rank, key):
-        self.outer.send('%s %d %s' % (g.CMD_PULL, rank, key))
+        self.outer.send((g.CMD_PULL, rank, key))
+        g.log('pull %d %d' % (rank, key))
         return self.outer.recv()
 
     def inc(self, rank, key, value):
-        self.outer.send('%s %d %s' % (g.CMD_INC, rank, key))
+        self.outer.send((g.CMD_INC, rank, key))
+        g.log('inc %d %d' % (rank, key))
         self.outer.send(value)
 
     def clock(self, rank, expt):
         self.clocks[rank] += 1
-        self.outer.send('%s %d %s' % (g.CMD_FLUSH, rank, None))
-        self.outer.send('%s %d %d' % (g.CMD_EXPT, rank, expt))
+        self.outer.send((g.CMD_FLUSH, rank, 0))
+        self.outer.send((g.CMD_EXPT, rank, expt))
+        g.log('clock %d %f' % (rank, expt))
 
+    def stop(self, rank):
+        g.log('stop %d' % rank)
+        self.outer.send((g.CMD_STOP, rank, 0))
 
     def run(self):
         while True:
-            cmd, rank, key = self.inner.recv().split()
+            # key is string when arrive here
+            cmd, rank, key = self.inner.recv()
             if cmd == g.CMD_PULL:
                 self._do_pull(rank, key)
             elif cmd == g.CMD_INC:
@@ -87,12 +94,15 @@ class Client(mp.Process):
                 self._do_flush(rank)
             elif cmd == g.CMD_EXPT:
                 self._do_expt(rank, key)
+            elif cmd == g.CMD_STOP:
+                self._do_stop(rank)
             else:
                 raise AttributeError('cmd must be inc or pull')
 
     def _do_pull(self, rank, key):
+        g.log('do pull %d %d' % (rank, key))
         row = self.cache.get(key)
-        if row is None or row.vc[rank]-g.STALE > row.vc.min:
+        if row is None or row.vc[rank] - g.STALE > row.vc.min:
             value = self._remote_pull(rank, key)
             self.inner.send(value)
         else:
@@ -110,29 +120,43 @@ class Client(mp.Process):
     def _do_expt(self, rank, expt):
         self._remote_expt(rank, expt)
 
+    def _do_stop(self, rank):
+        self._remote_stop(rank)
+
     def _remote_pull(self, rank, key, vc=None):
         dest = self.route_map.find_road(key)
         tag = self._gen_tag(rank, key)
-        self.comm.Send(NetPack(g.CMD_PULL, key, None, vc, rank, dest, tag), dest=dest, tag=tag)
-        pack = self.comm.Recv(source=dest, tag=tag)
+        if vc is not None:
+            g.log('remote pull %d %d %d %d %s' % (rank, key, dest, tag, vc))
+        else:
+            g.log('remote pull %d %d %d %d' % (rank, key, dest, tag))
+        self.comm.Bsend(NetPack(g.CMD_PULL, key, None, vc, rank, dest, tag), dest=dest, tag=tag)
+        pack = self.comm.recv(source=dest, tag=tag)
         # cache it
         self.cache.set(key, pack.value, pack.vc)
         return pack.value
 
-    def _remote_inc(self, rank, row):
-        key = row.key
+    def _remote_inc(self, rank, cache_row):
+        key = cache_row.key
         dest = self.route_map.find_road(key)
         tag = self._gen_tag(rank, key)
-        self.comm.Send(NetPack(g.CMD_INC, key, row.value, row.vc, rank, dest, tag), dest=dest, tag=tag)
+        g.log('remote inc %d %d %d %d %s' % (rank, key, dest, tag, cache_row.vc))
+        self.comm.isend(obj=NetPack(g.CMD_INC, key, cache_row.value, cache_row.vc, rank, dest, tag), dest=dest, tag=tag)
 
     def _remote_expt(self, rank, expt):
         dest = g.EXPT_MACHINE
         tag = rank
-        self.comm.send(NetPack(g.CMD_EXPT, None, expt, None, rank, 0, tag), dest=dest, tag=tag)
+        g.log('remote expt %d %d %d %f' % (rank, dest, tag, expt))
+        self.comm.isend(obj=NetPack(g.CMD_EXPT, None, expt, None, rank, 0, tag), dest=dest, tag=tag)
 
-    __magic_num = 3454756789
+    def _remote_stop(self, rank):
+        dest = g.EXPT_MACHINE
+        tag = rank
+        g.log('remote stop %d %d %d' % (rank, dest, tag))
+        self.comm.isend(obj=NetPack(g.CMD_STOP, None, None, None, rank, dest, tag), dest=dest, tag=tag)
+
+    __magic_num = 34547567
 
     @staticmethod
     def _gen_tag(rank, key):
         return int(hashlib.md5(('%d%s' % (rank, key)).encode()).hexdigest(), 16) % Client.__magic_num
-

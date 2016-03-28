@@ -6,16 +6,19 @@ from ps.Client import Client
 def d_mf(comm, local_data, local_P, k, steps=500, alpha=0.0002, beta=0.02):
     zeros = numpy.zeros(k)
     client = Client(comm)
+    client.start()
     my_rank = comm.Get_rank()
     for row in local_data:
         client.inc(my_rank, row[1]-1, zeros)
     local_Q = dict()
     e = 0
     for step in range(steps):
+        print('rank %d, iter=%d' % (my_rank, step))
         client.clock(my_rank, e)
         local_Q.clear()
         for row in local_data:
-            ii = row[0]-1
+            # 需要减去偏移值
+            ii = row[0]-local_data[0][0]
             jj = row[1]-1
             value = row[2]
             q = local_Q.get(jj)
@@ -27,5 +30,6 @@ def d_mf(comm, local_data, local_P, k, steps=500, alpha=0.0002, beta=0.02):
         e = 0
         for row in local_data:
             q = local_Q.get(row[1]-1)
-            e += pow(row[2] - numpy.dot(local_P[row[0] - 1, :], q), 2)
+            e += pow(row[2] - numpy.dot(local_P[row[0] - local_data[0][0], :], q), 2)
+    client.stop(my_rank)
     return

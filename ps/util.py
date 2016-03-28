@@ -4,6 +4,7 @@ import hashlib
 import numpy as np
 
 from ps import g
+import copy
 
 
 class VectorClock:
@@ -18,7 +19,8 @@ class VectorClock:
         if clocks is None:
             self._clock = np.array([0 for _ in range(g.client_num)])
         else:
-            self._clock = np.array([item for item in clocks])
+            tmp = copy.deepcopy(clocks)
+            self._clock = np.array(tmp)
         self.min_v = 1234567890
 
     def combined(self, v):
@@ -38,8 +40,14 @@ class VectorClock:
 
     def _check(self):
         for v in self._clock:
-            if v != 0 and v < self.min_v:
+            if v < self.min_v:
                 self.min_v = v
+
+    def __getitem__(self, key):
+        return self._clock[key]
+
+    def __str__(self):
+        return str(self._clock)
 
 
 class NetPack:

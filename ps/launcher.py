@@ -6,6 +6,7 @@ import csv
 from mpi4py import MPI
 from ps import g
 from ps.Client import Client
+from ps.Server import Server
 from ps.MF import d_mf
 import numpy as np
 
@@ -15,16 +16,11 @@ def load_data(rank):
         tmp = []
         reader = csv.reader(file)
         for row in reader:
-            tmp.append(row)
+            tmp.append([int(float(row[0])), int(float(row[1])), int(float(row[2]))])
     return tmp
 
 
-def read_datas():
-    pass
-
-
 if __name__ == '__main__':
-    read_datas()
     comm = MPI.COMM_WORLD
     size = comm.Get_size()
     rank = comm.Get_rank()
@@ -39,10 +35,7 @@ if __name__ == '__main__':
     wk_group.Free()
 
     if rank >= g.client_num:
-        my_rank = ps_comm.Get_rank()
-        my_size = ps_comm.Get_size()
-        comm.send('hello from %d %d' % (rank, my_rank), dest=rank - g.client_num, tag=1)
-        # print('ps %d  %d  %d' % (rank, my_rank, my_size))
+        ser = Server(comm)
     else:
         local_data = load_data(rank)
-        d_mf(comm, local_data, np.zeros((local_data[-1][0], g.K)), g.K, 5000)
+        d_mf(comm, local_data, np.zeros((local_data[-1][0], g.K)), g.K, 10)

@@ -20,6 +20,7 @@ class Store:
         return self._store.get(key)
 
     def inc(self, key, value, vc):
+        g.log('server inc %d %f %s' % (key, value, str(vc)))
         row = self._store.get(key)
         if row is None:
             self._store[key] = self.Row(key, value, vc)
@@ -42,20 +43,24 @@ class QueryQueue:
         return self.queue.get(key)
 
 
-class Server(mp.Process):
+class Server:
     def __init__(self, comm):
         super().__init__()
         self.comm = comm
         self.store = Store()
         self.query = QueryQueue()
-        my_rank = self.comm.Get_Rank()
-        if my_rank == g.EXPT_MACHINE:
+        self.my_rank = self.comm.Get_rank()
+        if self.my_rank == g.EXPT_MACHINE:
             self.expt = dict()
+        self.status = [True for _ in range(g.client_num)]
+        self.STOP = False
+        self.run()
 
     def run(self):
-        while True:
+        while not self.STOP:
             st = MPI.Status()
-            pack = self.comm.Recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=st)
+            pack = self.comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=st)
+            g.log('%d recv %d %d %s' % (self.my_rank, st.source, st.tag, pack.cmd))
             if not isinstance(pack, NetPack):
                 continue
             if pack.cmd == g.CMD_INC:
@@ -64,6 +69,8 @@ class Server(mp.Process):
                 self._do_pull(pack, st)
             elif pack.cmd == g.CMD_EXPT:
                 self._do_expt(pack)
+            elif pack.cmd == g.CMD_STOP:
+                self._do_stop(pack)
             else:
                 continue
 
@@ -76,7 +83,7 @@ class Server(mp.Process):
         if abs(o_pack.vc[o_pack.src] - vc.min) > g.STALE:
             return
         r_pack = NetPack(o_pack.cmd, o_pack.key, new_pack.value, vc, o_pack.src, o_pack.dest, o_pack.tag)
-        self.comm.Send(r_pack, dest=st.source, tag=st.tag)
+        self.comm.isend(r_pack, dest=st.source, tag=st.tag)
 
     def _do_inc(self, pack):
         self.store.inc(pack.key, pack.value, pack.vc)
@@ -88,7 +95,7 @@ class Server(mp.Process):
             self.query.insert(pack.key, pack, st)
         else:
             r_pack = NetPack(pack.cmd, pack.key, row.value, row.vc, pack.src, pack.dest, pack.tag)
-            self.comm.Send(r_pack, dest=st.source, tag=st.tag)
+            self.comm.isend(r_pack, dest=st.source, tag=st.tag)
 
     def _do_expt(self, pack):
         src = pack.src
@@ -98,3 +105,18 @@ class Server(mp.Process):
             self.expt[src] = [value]
         else:
             self.expt[src].append(value)
+
+    def _do_stop(self, pack):
+        src = pack.src
+        self.status[src] = False
+        for ii in range(g.client_num):
+            if self.status[ii]:
+                return
+        self.write_result()
+        self.STOP = True
+
+    def write_result(self):
+        for jj in range(1, len(self.expt[0])):
+            self.expt[0] += self.expt[jj]
+        f = open('result.txt', 'w')
+        f.write(str(self.expt[0]))
