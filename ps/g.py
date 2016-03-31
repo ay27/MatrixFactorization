@@ -6,12 +6,11 @@ CMD_FLUSH = 'flush'
 CMD_EXPT = 'expt'
 CMD_STOP = 'stop'
 
-PROCESS_EVERY_MACHINE = 2
-client_num = PROCESS_EVERY_MACHINE * 2
-ps_num = PROCESS_EVERY_MACHINE * 1
+client_num = 3
+ps_num = 2
 
 STALE = 1
 
 EXPT_MACHINE = client_num + ps_num - 1
 
-K = 20
+K = 4

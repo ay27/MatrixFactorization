@@ -2,30 +2,11 @@
 
 import multiprocessing as mp
 from mpi4py import MPI
+import numpy as np
+
 from ps import g
-from ps.util import NetPack
-
-
-class Store:
-    class Row:
-        def __init__(self, key, value, vc):
-            self.key = key
-            self.value = value
-            self.vc = vc
-
-    def __init__(self):
-        self._store = dict()
-
-    def get(self, key):
-        return self._store.get(key)
-
-    def inc(self, key, value, vc):
-        row = self._store.get(key)
-        if row is None:
-            self._store[key] = self.Row(key, value, vc)
-        else:
-            row.value += value
-            row.vc.combined(vc)
+from ps import util
+from ps.util import VectorClock
 
 
 class QueryQueue:
@@ -44,10 +25,10 @@ class QueryQueue:
 
 class Server:
     def __init__(self, comm):
-        self.log_file = open('log_S%d.log' % comm.Get_rank(), 'w')
+        self.log_file = open('../log/log_S%d.log' % comm.Get_rank(), 'w')
         self.log('server init')
         self.comm = comm
-        self.store = Store()
+        self.store = dict()
         self.query = QueryQueue()
         self.my_rank = self.comm.Get_rank()
         if self.my_rank == g.EXPT_MACHINE:
@@ -61,50 +42,44 @@ class Server:
         self.log('server run')
         self.log(self.STOP)
         while not self.STOP:
-            self.log('server waiting')
+            # self.log('server waiting')
             st = MPI.Status()
             pack = self.comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=st)
-            self.log('%d recv %d %d %s' % (self.my_rank, st.source, st.tag, pack.cmd))
-            if not isinstance(pack, NetPack):
+            if not isinstance(pack, dict):
                 continue
-            if pack.cmd == g.CMD_INC:
-                self._do_inc(pack)
-            elif pack.cmd == g.CMD_PULL:
-                self._do_pull(pack, st)
-            elif pack.cmd == g.CMD_EXPT:
-                self._do_expt(pack)
-            elif pack.cmd == g.CMD_STOP:
-                self._do_stop(pack)
+            if pack.get('cmd') == g.CMD_INC:
+                value_buf = np.empty(g.K, dtype=float)
+                vc_buf = np.empty(g.client_num, dtype=int)
+                self.comm.Recv(value_buf, source=st.source, tag=st.tag+1)
+                self.comm.Recv(vc_buf, source=st.source, tag=st.tag+2)
+                # print('server value %s' % str(value_buf))
+                self._do_inc(util.Unpack(pack, value_buf, vc_buf))
+            elif pack.get('cmd') == g.CMD_PULL:
+                vc_buf = np.empty(g.client_num, dtype=int)
+                self.comm.Recv(vc_buf, source=st.source, tag=st.tag+1)
+                self._do_pull(util.Unpack(pack), st)
+            elif pack.get('cmd') == g.CMD_EXPT:
+                self._do_expt(util.Unpack(pack))
+            elif pack.get('cmd') == g.CMD_STOP:
+                self._do_stop(util.Unpack(pack))
             else:
                 continue
 
-    def scan_query(self, new_pack):
-        pair = self.query.get(new_pack.key)
-        if pair is None:
-            return
-        o_pack, st = pair
-        vc = self.store.get(new_pack.key).vc
-        if abs(o_pack.vc[o_pack.src] - vc.min) > g.STALE:
-            return
-        r_pack = NetPack(o_pack.cmd, o_pack.key, new_pack.value, vc, o_pack.src, o_pack.dest, o_pack.tag)
-        self.comm.isend(r_pack, dest=st.source, tag=st.tag)
-
     def _do_inc(self, pack):
-        self.store.inc(pack.key, pack.value, pack.vc)
-        self.scan_query(pack)
+        if pack.key in self.store:
+            self.store[pack.key] += pack.value
+        else:
+            self.store[pack.key] = pack.value
 
     def _do_pull(self, pack, st):
-        row = self.store.get(pack.key)
-        if row is None:
-            self.query.insert(pack.key, pack, st)
-        else:
-            r_pack = NetPack(pack.cmd, pack.key, row.value, row.vc, pack.src, pack.dest, pack.tag)
-            self.comm.isend(r_pack, dest=st.source, tag=st.tag)
+        self.comm.Send([self.store.get(pack.key, None), MPI.FLOAT], dest=st.source, tag=st.tag)
+        self.comm.Send([VectorClock().inner, MPI.INT], dest=st.source, tag=st.tag+1)
 
     def _do_expt(self, pack):
         src = pack.src
-        value = pack.value
+        value = pack.key
         row = self.expt.get(src)
+        # print('expt %d %f' % (src, value))
         if row is None:
             self.expt[src] = [value]
         else:
@@ -118,11 +93,14 @@ class Server:
                 return
         self.write_result()
         self.STOP = True
+        MPI.Finalize()
 
     def write_result(self):
-        for jj in range(1, len(self.expt[0])):
-            self.expt[0] += self.expt[jj]
-        f = open('result.txt', 'w')
+        print('write result')
+        self.expt[0] = np.array(self.expt[0])
+        for jj in range(1, g.client_num):
+            self.expt[0] += np.array(self.expt[jj])
+        f = open('../log/result%d.txt' % self.my_rank, 'w')
         f.write(str(self.expt[0]))
 
     def log(self, msg):

@@ -1,23 +1,29 @@
 # Created by ay27 at 16/3/17
 
-# TODO load data, start mpi machine
 import csv
 
 from mpi4py import MPI
-from ps import g
-from ps.Client import Client
-from ps.Server import Server
-from ps.MF import d_mf
 import numpy as np
+
+from ps import g
+from ps.MF import d_mf
+from ps.Server import Server
 
 
 def load_data(rank):
-    with open('../data/output1/data_%d.csv' % rank) as file:
+    with open('../data/9x9_3blocks') as file:
+        for ii in range(rank*27):
+            file.readline()
         tmp = []
-        reader = csv.reader(file)
-        for row in reader:
-            tmp.append([int(float(row[0])), int(float(row[1])), int(float(row[2]))])
+        for ii in range(27):
+            row = file.readline().split()
+            tmp.append([int(row[0]), int(row[1]), float(row[2])])
     return tmp
+    #     tmp = []
+    #     reader = csv.reader(file)
+    #     for row in reader:
+    #         tmp.append([int(float(row[0])), int(float(row[1])), int(float(row[2]))])
+    # return tmp
 
 
 if __name__ == '__main__':
@@ -42,4 +48,4 @@ if __name__ == '__main__':
     else:
         print('client')
         local_data = load_data(rank)
-        d_mf(comm, local_data, np.zeros((local_data[-1][0], g.K)), g.K, 10)
+        d_mf(comm, wk_comm, local_data, np.random.rand(len(local_data), g.K), g.K, 100, 0.002, 0.02)
