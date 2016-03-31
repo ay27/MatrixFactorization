@@ -1,5 +1,7 @@
 # Created by ay27 at 16/3/30
 import math
+from mpi4py import MPI
+
 import numpy
 
 from ps.Client import Client
@@ -50,4 +52,5 @@ def d_mf(comm, wk_comm, local_data, local_P, k, steps=500, alpha=0.0002, beta=0.
             if abs(value - 0.0) > 0.000001:
                 e += pow(numpy.dot(local_P[ii], local_Q[jj]) - value, 2)
     client.stop(my_rank)
+    MPI.Finalize()
     return

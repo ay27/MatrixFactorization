@@ -44,8 +44,9 @@ if __name__ == '__main__':
     print('g.client_num = %d' % g.client_num)
     if rank >= g.client_num:
         print('server')
-        ser = Server(comm)
+        ser = Server(comm, ps_comm)
     else:
         print('client')
         local_data = load_data(rank)
         d_mf(comm, wk_comm, local_data, np.random.rand(len(local_data), g.K), g.K, 100, 0.002, 0.02)
+    print('finish %d' % rank)

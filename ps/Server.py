@@ -24,10 +24,11 @@ class QueryQueue:
 
 
 class Server:
-    def __init__(self, comm):
+    def __init__(self, comm, ps_comm):
         self.log_file = open('../log/log_S%d.log' % comm.Get_rank(), 'w')
         self.log('server init')
         self.comm = comm
+        self.ps_comm = ps_comm
         self.store = dict()
         self.query = QueryQueue()
         self.my_rank = self.comm.Get_rank()
@@ -46,17 +47,19 @@ class Server:
             st = MPI.Status()
             pack = self.comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=st)
             if not isinstance(pack, dict):
-                continue
+                if pack == g.CMD_STOP_THE_WORLD:
+                    print('stop the world %d' % self.my_rank)
+                    break
             if pack.get('cmd') == g.CMD_INC:
                 value_buf = np.empty(g.K, dtype=float)
                 vc_buf = np.empty(g.client_num, dtype=int)
-                self.comm.Recv(value_buf, source=st.source, tag=st.tag+1)
-                self.comm.Recv(vc_buf, source=st.source, tag=st.tag+2)
+                self.comm.Recv(value_buf, source=st.source, tag=st.tag + 1)
+                self.comm.Recv(vc_buf, source=st.source, tag=st.tag + 2)
                 # print('server value %s' % str(value_buf))
                 self._do_inc(util.Unpack(pack, value_buf, vc_buf))
             elif pack.get('cmd') == g.CMD_PULL:
                 vc_buf = np.empty(g.client_num, dtype=int)
-                self.comm.Recv(vc_buf, source=st.source, tag=st.tag+1)
+                self.comm.Recv(vc_buf, source=st.source, tag=st.tag + 1)
                 self._do_pull(util.Unpack(pack), st)
             elif pack.get('cmd') == g.CMD_EXPT:
                 self._do_expt(util.Unpack(pack))
@@ -64,6 +67,7 @@ class Server:
                 self._do_stop(util.Unpack(pack))
             else:
                 continue
+        MPI.Finalize()
 
     def _do_inc(self, pack):
         if pack.key in self.store:
@@ -73,7 +77,7 @@ class Server:
 
     def _do_pull(self, pack, st):
         self.comm.Send([self.store.get(pack.key, None), MPI.FLOAT], dest=st.source, tag=st.tag)
-        self.comm.Send([VectorClock().inner, MPI.INT], dest=st.source, tag=st.tag+1)
+        self.comm.Send([VectorClock().inner, MPI.INT], dest=st.source, tag=st.tag + 1)
 
     def _do_expt(self, pack):
         src = pack.src
@@ -92,8 +96,8 @@ class Server:
             if self.status[ii]:
                 return
         self.write_result()
-        self.STOP = True
-        MPI.Finalize()
+        for ii in range(g.client_num, g.client_num+g.ps_num):
+            self.comm.send(g.CMD_STOP_THE_WORLD, dest=ii, tag=ii)
 
     def write_result(self):
         print('write result')
