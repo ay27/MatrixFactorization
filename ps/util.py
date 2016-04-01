@@ -50,22 +50,34 @@ class VectorClock:
 
 
 def merge(vc1, vc2):
-    if isinstance(vc1, VectorClock) and isinstance(vc2, VectorClock):
-        return VectorClock(vc1.inner + vc2.inner)
+    if isinstance(vc1, VectorClock):
+        tmp1 = vc1.inner
+    else:
+        tmp1 = vc1
+    if isinstance(vc2, VectorClock):
+        tmp2 = vc2.inner
+    else:
+        tmp2 = vc2
+    return VectorClock(tmp1+tmp2)
 
 
-class Store:
-    class __row:
-        def __init__(self, value, vc):
-            self.value = value
-            self.vc = vc
 
-    def __init__(self):
-        self.store = dict()
+# class Store:
+#     class __row:
+#         def __init__(self, value, vc):
+#             self.value = value
+#             self.vc = vc
+#
+#     def __init__(self):
+#         self.store = dict()
+#
+#     def insert(self, key, value, vc):
+#         self.store[key] = Store.__row(value, vc)
+#
+#     def query(self, key):
+#         return self.store.get(key)
 
-    def insert(self, key, value, vc):
-        self.store[key] = Store.__row(value, vc)
-
-    def query(self, key):
-        return self.store.get(key)
+class Store(dict):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 

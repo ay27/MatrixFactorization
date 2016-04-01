@@ -37,6 +37,7 @@ class Server:
         self.status = [True for _ in range(g.client_num)]
         self.STOP = False
         self.log('init finish')
+        self.clocks = np.zeros(g.client_num)
         self.run()
 
     def run(self):
@@ -52,14 +53,10 @@ class Server:
                     break
             if pack.get('cmd') == g.CMD_INC:
                 value_buf = np.empty(g.K, dtype=float)
-                vc_buf = np.empty(g.client_num, dtype=int)
                 self.comm.Recv(value_buf, source=st.source, tag=st.tag + 1)
-                self.comm.Recv(vc_buf, source=st.source, tag=st.tag + 2)
-                self._do_inc(util.Unpack(pack, value_buf, vc_buf))
+                self._do_inc(util.Unpack(pack, value_buf))
             elif pack.get('cmd') == g.CMD_PULL:
-                vc_buf = np.empty(g.client_num, dtype=int)
-                self.comm.Recv(vc_buf, source=st.source, tag=st.tag + 1)
-                self._do_pull(util.Unpack(pack, None, vc_buf), st)
+                self._do_pull(util.Unpack(pack), st)
             elif pack.get('cmd') == g.CMD_EXPT:
                 self._do_expt(util.Unpack(pack))
             elif pack.get('cmd') == g.CMD_STOP:
@@ -69,22 +66,16 @@ class Server:
         MPI.Finalize()
 
     def _do_inc(self, pack):
-        row = self.store.query(pack.key)
-        if row is None:
-            self.store.insert(pack.key, pack.value, pack.vc)
+        value = self.store.get(pack.key)
+        if value is None:
+            self.store[pack.key] = pack.value
         else:
-            self.store.insert(pack.key, pack.value + row.value, util.merge(pack.vc, row.vc))
+            self.store[pack.key] = pack.value + value
 
     def _do_pull(self, pack, st):
-        row = self.store.query(pack.key)
-        if row is None:
-            value = None
-            vc = None
-        else:
-            value = row.value
-            vc = row.vc
+        value = self.store.get(pack.key)
         self.comm.Send([value, MPI.FLOAT], dest=st.source, tag=st.tag)
-        self.comm.Send([vc, MPI.INT], dest=st.source, tag=st.tag + 1)
+        self.comm.Send([self.clocks, MPI.INT], dest=st.source, tag=st.tag + 1)
 
     def _do_expt(self, pack):
         src = pack.src

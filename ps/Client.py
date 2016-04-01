@@ -8,6 +8,7 @@ from mpi4py import MPI
 import numpy as np
 
 from ps import g
+from ps import util
 from ps.util import pack, VectorClock, Store
 
 
@@ -76,21 +77,19 @@ class Client(mp.Process):
 
     def do_pull(self, rank, key):
         self.log('pull %d %d' % (rank, key))
-        row = self.cache.query(key)
-        if row is not None:
-            if self.check_consistency(row.vc, rank):
-                self.inner.send(row.value)
-                return
-
-
+        # value = self.cache.get(key)
+        # if value is not None:
+        #     if self.check_consistency(rank):
+        #         self.inner.send(value)
+        #         return
         dest = find_road(key)
         tag = gen_tag()
         self.comm.send(obj=pack(g.CMD_PULL, key, rank, dest, tag), dest=dest, tag=tag)
-        self.comm.Send([VectorClock().inner, MPI.INT], dest=dest, tag=tag + 1)
         value_buf = np.empty(g.K, dtype=float)
         vc_buf = np.empty(g.client_num, dtype=int)
         self.comm.Recv(value_buf, source=dest, tag=tag)
         self.comm.Recv(vc_buf, source=dest, tag=tag + 1)
+        self.clock = util.merge(self.clock, vc_buf)
         self.inner.send(value_buf)
 
     def do_inc(self, rank, key, value):
@@ -99,7 +98,6 @@ class Client(mp.Process):
         tag = gen_tag()
         self.comm.send(obj=pack(g.CMD_INC, key, rank, dest, tag), dest=dest, tag=tag)
         self.comm.Send([value, MPI.FLOAT], dest=dest, tag=tag + 1)
-        self.comm.Send([VectorClock().inner, MPI.INT], dest=dest, tag=tag + 2)
 
     def do_clock(self, rank, expt):
         self.log('clock %d %f' % (rank, expt))
@@ -114,5 +112,5 @@ class Client(mp.Process):
         tag = rank
         self.comm.send(obj=pack(g.CMD_STOP, None, rank, dest, tag), dest=dest, tag=tag)
 
-    def check_consistency(self, vc, rank):
-        return self.clocks[rank] - vc.get_min() <= g.STALE
+    def check_consistency(self, rank):
+        return self.clock[rank] - self.clock.get_min() <= g.STALE
