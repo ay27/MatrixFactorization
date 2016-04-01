@@ -42,11 +42,13 @@ if __name__ == '__main__':
 
     print('rank = %d' % rank)
     print('g.client_num = %d' % g.client_num)
+    o_t = MPI.Wtime()
     if rank >= g.client_num:
         print('server')
         ser = Server(comm, ps_comm)
     else:
         print('client')
         local_data = load_data(rank)
+        o_t = MPI.Wtime()
         d_mf(comm, wk_comm, local_data, np.random.rand(len(local_data), g.K), g.K, 100, 0.002, 0.02)
-    print('finish %d' % rank)
+    print('finish %d, elapsed time = %f' % (rank, MPI.Wtime() - o_t))

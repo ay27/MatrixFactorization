@@ -16,6 +16,7 @@ def log(msg):
 def d_mf(comm, wk_comm, local_data, local_P, k, steps=500, alpha=0.0002, beta=0.02):
     zeros = numpy.zeros(k)
     client = Client(comm, wk_comm)
+    client.start()
     my_rank = comm.Get_rank()
     for row in local_data:
         client.inc(my_rank, row[1] - 1, zeros)

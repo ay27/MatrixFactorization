@@ -6,7 +6,7 @@ import numpy as np
 
 from ps import g
 from ps import util
-from ps.util import VectorClock
+from ps.util import VectorClock, Store
 
 
 class QueryQueue:
@@ -29,7 +29,7 @@ class Server:
         self.log('server init')
         self.comm = comm
         self.ps_comm = ps_comm
-        self.store = dict()
+        self.store = Store()
         self.query = QueryQueue()
         self.my_rank = self.comm.Get_rank()
         if self.my_rank == g.EXPT_MACHINE:
@@ -55,12 +55,11 @@ class Server:
                 vc_buf = np.empty(g.client_num, dtype=int)
                 self.comm.Recv(value_buf, source=st.source, tag=st.tag + 1)
                 self.comm.Recv(vc_buf, source=st.source, tag=st.tag + 2)
-                # print('server value %s' % str(value_buf))
                 self._do_inc(util.Unpack(pack, value_buf, vc_buf))
             elif pack.get('cmd') == g.CMD_PULL:
                 vc_buf = np.empty(g.client_num, dtype=int)
                 self.comm.Recv(vc_buf, source=st.source, tag=st.tag + 1)
-                self._do_pull(util.Unpack(pack), st)
+                self._do_pull(util.Unpack(pack, None, vc_buf), st)
             elif pack.get('cmd') == g.CMD_EXPT:
                 self._do_expt(util.Unpack(pack))
             elif pack.get('cmd') == g.CMD_STOP:
@@ -70,14 +69,22 @@ class Server:
         MPI.Finalize()
 
     def _do_inc(self, pack):
-        if pack.key in self.store:
-            self.store[pack.key] += pack.value
+        row = self.store.query(pack.key)
+        if row is None:
+            self.store.insert(pack.key, pack.value, pack.vc)
         else:
-            self.store[pack.key] = pack.value
+            self.store.insert(pack.key, pack.value + row.value, util.merge(pack.vc, row.vc))
 
     def _do_pull(self, pack, st):
-        self.comm.Send([self.store.get(pack.key, None), MPI.FLOAT], dest=st.source, tag=st.tag)
-        self.comm.Send([VectorClock().inner, MPI.INT], dest=st.source, tag=st.tag + 1)
+        row = self.store.query(pack.key)
+        if row is None:
+            value = None
+            vc = None
+        else:
+            value = row.value
+            vc = row.vc
+        self.comm.Send([value, MPI.FLOAT], dest=st.source, tag=st.tag)
+        self.comm.Send([vc, MPI.INT], dest=st.source, tag=st.tag + 1)
 
     def _do_expt(self, pack):
         src = pack.src
@@ -96,7 +103,7 @@ class Server:
             if self.status[ii]:
                 return
         self.write_result()
-        for ii in range(g.client_num, g.client_num+g.ps_num):
+        for ii in range(g.client_num, g.client_num + g.ps_num):
             self.comm.send(g.CMD_STOP_THE_WORLD, dest=ii, tag=ii)
 
     def write_result(self):

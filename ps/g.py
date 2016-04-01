@@ -6,6 +6,7 @@ CMD_FLUSH = 'flush'
 CMD_EXPT = 'expt'
 CMD_STOP = 'stop'
 CMD_STOP_THE_WORLD = 'stop_the_world'
+CMD_CLOCK = 'clock'
 
 client_num = 3
 ps_num = 2
