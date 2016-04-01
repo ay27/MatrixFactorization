@@ -77,11 +77,18 @@ class Client(mp.Process):
 
     def do_pull(self, rank, key):
         self.log('pull %d %d' % (rank, key))
-        # value = self.cache.get(key)
-        # if value is not None:
-        #     if self.check_consistency(rank):
-        #         self.inner.send(value)
-        #         return
+        # read cache
+        value = self.cache.get(key)
+        if self.check_consistency(rank):
+            if value is not None:
+                self.inner.send(value)
+                return
+            else:
+                tmp = np.zeros(g.K, dtype=float)
+                self.cache[key] = tmp
+                self.inner.send(tmp)
+                return
+
         dest = find_road(key)
         tag = gen_tag()
         self.comm.send(obj=pack(g.CMD_PULL, key, rank, dest, tag), dest=dest, tag=tag)
@@ -89,11 +96,21 @@ class Client(mp.Process):
         vc_buf = np.empty(g.client_num, dtype=int)
         self.comm.Recv(value_buf, source=dest, tag=tag)
         self.comm.Recv(vc_buf, source=dest, tag=tag + 1)
+
+        # cache it and update local clocks
+        self.cache[key] = value_buf
         self.clock = util.merge(self.clock, vc_buf)
         self.inner.send(value_buf)
 
     def do_inc(self, rank, key, value):
         self.log('inc %d %d %s' % (rank, key, str(value)))
+        # update cache
+        v = self.cache.get(key)
+        if v is None:
+            self.cache[key] = value
+        else:
+            self.cache[key] += value
+
         dest = find_road(key)
         tag = gen_tag()
         self.comm.send(obj=pack(g.CMD_INC, key, rank, dest, tag), dest=dest, tag=tag)
@@ -104,7 +121,8 @@ class Client(mp.Process):
         dest = g.EXPT_MACHINE
         tag = rank
         self.comm.send(obj=pack(g.CMD_EXPT, expt, rank, 0, tag), dest=dest, tag=tag)
-        self.wk_comm.barrier()
+        self.comm.Send([self.clock.inner, MPI.INT], dest=dest, tag=tag+1)
+        # self.wk_comm.barrier()
 
     def do_stop(self, rank):
         self.log('stop %d' % rank)

@@ -22,6 +22,9 @@ class QueryQueue:
     def get(self, key):
         return self.queue.get(key)
 
+    def inner(self):
+        return self.queue
+
 
 class Server:
     def __init__(self, comm, ps_comm):
@@ -37,7 +40,7 @@ class Server:
         self.status = [True for _ in range(g.client_num)]
         self.STOP = False
         self.log('init finish')
-        self.clocks = np.zeros(g.client_num)
+        self.clocks = VectorClock()
         self.run()
 
     def run(self):
@@ -55,10 +58,15 @@ class Server:
                 value_buf = np.empty(g.K, dtype=float)
                 self.comm.Recv(value_buf, source=st.source, tag=st.tag + 1)
                 self._do_inc(util.Unpack(pack, value_buf))
+
             elif pack.get('cmd') == g.CMD_PULL:
                 self._do_pull(util.Unpack(pack), st)
+
             elif pack.get('cmd') == g.CMD_EXPT:
-                self._do_expt(util.Unpack(pack))
+                vc_buf = np.empty(g.client_num, dtype=int)
+                self.comm.Recv(vc_buf, source=st.source, tag=st.tag+1)
+                self._do_expt(util.Unpack(pack, None, VectorClock(vc_buf)))
+
             elif pack.get('cmd') == g.CMD_STOP:
                 self._do_stop(util.Unpack(pack))
             else:
@@ -73,9 +81,13 @@ class Server:
             self.store[pack.key] = pack.value + value
 
     def _do_pull(self, pack, st):
+        if self.clocks[pack.src] - self.clocks.get_min() > g.STALE:
+            print('block %d' % pack.src)
+            self.query.insert(pack.key, pack, st)
+            return
         value = self.store.get(pack.key)
         self.comm.Send([value, MPI.FLOAT], dest=st.source, tag=st.tag)
-        self.comm.Send([self.clocks, MPI.INT], dest=st.source, tag=st.tag + 1)
+        self.comm.Send([self.clocks.inner, MPI.INT], dest=st.source, tag=st.tag + 1)
 
     def _do_expt(self, pack):
         src = pack.src
@@ -86,6 +98,9 @@ class Server:
             self.expt[src] = [value]
         else:
             self.expt[src].append(value)
+        # update server clocks
+        self.clocks = util.merge(self.clocks, pack.vc)
+        self.scan_query()
 
     def _do_stop(self, pack):
         src = pack.src
@@ -108,3 +123,13 @@ class Server:
     def log(self, msg):
         # print('server %s' % msg)
         self.log_file.write('%s\n' % msg)
+
+    def scan_query(self):
+        for key, (pack, st) in list(self.query.inner().items()):
+            if self.clocks[pack.src] - self.clocks.get_min() <= g.STALE:
+                print('waitup %d' % pack.src)
+                value = self.store.get(pack.key)
+                self.comm.Send([value, MPI.FLOAT], dest=st.source, tag=st.tag)
+                self.comm.Send([self.clocks.inner, MPI.INT], dest=st.source, tag=st.tag + 1)
+
+                self.query.remove(key)

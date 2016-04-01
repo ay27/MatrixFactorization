@@ -11,7 +11,7 @@ CMD_CLOCK = 'clock'
 client_num = 3
 ps_num = 2
 
-STALE = 1
+STALE = 2
 
 EXPT_MACHINE = client_num + ps_num - 1
 
