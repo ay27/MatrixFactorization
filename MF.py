@@ -1,12 +1,10 @@
 # Created by ay27 at 16/3/30
-import math
+import numpy
 from mpi4py import MPI
 
-import numpy
+from Client import Client
 
-from ps.Client import Client
-
-f = open('../log/mf.log', 'w')
+f = open('log/mf.log', 'w')
 
 
 def log(msg):

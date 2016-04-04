@@ -1,18 +1,16 @@
 # Created by ay27 at 16/3/17
 
-import csv
-
-from mpi4py import MPI
 import numpy as np
+from mpi4py import MPI
+from MF import d_mf
 
-from ps import g
-from ps.MF import d_mf
-from ps.Server import Server
+from Server import Server
+import g
 
 
 def load_data(rank):
-    with open('../data/9x9_3blocks') as file:
-        for ii in range(rank*27):
+    with open('data/9x9_3blocks') as file:
+        for ii in range(rank * 27):
             file.readline()
         tmp = []
         for ii in range(27):

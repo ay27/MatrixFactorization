@@ -1,6 +1,6 @@
 import numpy as np
-from ps import g
-import copy
+
+import g
 
 
 def pack(cmd, key, src, dest, tag):
@@ -28,9 +28,9 @@ class Unpack:
 class VectorClock:
     def __init__(self, clock=None):
         if clock is None:
-            self.clock = np.zeros(g.client_num)
+            self.clock = np.zeros(g.client_num, dtype=np.int32)
         else:
-            self.clock = np.array(copy.deepcopy(clock))
+            self.clock = np.array(clock)
 
     def tick(self, rank):
         self.clock[rank] += 1
@@ -58,24 +58,11 @@ def merge(vc1, vc2):
         tmp2 = vc2.inner
     else:
         tmp2 = vc2
-    return VectorClock(tmp1+tmp2)
+    tmp = VectorClock()
+    for ii in range(len(tmp1)):
+        tmp[ii] = max(tmp1[ii], tmp2[ii])
+    return tmp
 
-
-
-# class Store:
-#     class __row:
-#         def __init__(self, value, vc):
-#             self.value = value
-#             self.vc = vc
-#
-#     def __init__(self):
-#         self.store = dict()
-#
-#     def insert(self, key, value, vc):
-#         self.store[key] = Store.__row(value, vc)
-#
-#     def query(self, key):
-#         return self.store.get(key)
 
 class Store(dict):
     def __init__(self, **kwargs):

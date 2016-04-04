@@ -1,15 +1,14 @@
 # Created by ay27 at 16/3/17
-import copy
-import multiprocessing as mp
 import hashlib
+import multiprocessing as mp
 from random import randint
 
-from mpi4py import MPI
 import numpy as np
+from mpi4py import MPI
 
-from ps import g
-from ps import util
-from ps.util import pack, VectorClock, Store
+import util
+import g
+from util import pack, VectorClock, Store
 
 
 def find_road(key):
@@ -47,7 +46,7 @@ class Client(mp.Process):
     ####################################################################################################################
 
     def run(self):
-        self.log_file = open('../log/log_c%d.txt' % self.comm.Get_rank(), 'w')
+        self.log_file = open('log/log_c%d.txt' % self.comm.Get_rank(), 'w')
         self.clock = VectorClock()
         while True:
             msg = self.inner.recv()
@@ -84,22 +83,24 @@ class Client(mp.Process):
                 self.inner.send(value)
                 return
             else:
-                tmp = np.zeros(g.K, dtype=float)
+                tmp = np.zeros(g.K, dtype=np.float64)
                 self.cache[key] = tmp
                 self.inner.send(tmp)
                 return
 
         dest = find_road(key)
         tag = gen_tag()
-        self.comm.send(obj=pack(g.CMD_PULL, key, rank, dest, tag), dest=dest, tag=tag)
-        value_buf = np.empty(g.K, dtype=float)
-        vc_buf = np.empty(g.client_num, dtype=int)
+        self.comm.isend(obj=pack(g.CMD_PULL, key, rank, dest, tag), dest=dest, tag=tag)
+        value_buf = np.empty(g.K, dtype=np.float64)
+        vc_buf = np.empty(g.client_num, dtype=np.int32)
         self.comm.Recv(value_buf, source=dest, tag=tag)
         self.comm.Recv(vc_buf, source=dest, tag=tag + 1)
+        self.log('recv vc %s' % str(vc_buf))
 
         # cache it and update local clocks
         self.cache[key] = value_buf
         self.clock = util.merge(self.clock, vc_buf)
+        self.log('local clocks %s' % str(self.clock.inner))
         self.inner.send(value_buf)
 
     def do_inc(self, rank, key, value):
@@ -113,22 +114,23 @@ class Client(mp.Process):
 
         dest = find_road(key)
         tag = gen_tag()
-        self.comm.send(obj=pack(g.CMD_INC, key, rank, dest, tag), dest=dest, tag=tag)
-        self.comm.Send([value, MPI.FLOAT], dest=dest, tag=tag + 1)
+        self.comm.isend(obj=pack(g.CMD_INC, key, rank, dest, tag), dest=dest, tag=tag)
+        self.comm.Isend([value, MPI.FLOAT], dest=dest, tag=tag + 1)
 
     def do_clock(self, rank, expt):
         self.log('clock %d %f' % (rank, expt))
         dest = g.EXPT_MACHINE
         tag = rank
-        self.comm.send(obj=pack(g.CMD_EXPT, expt, rank, 0, tag), dest=dest, tag=tag)
-        self.comm.Send([self.clock.inner, MPI.INT], dest=dest, tag=tag+1)
+        self.comm.isend(obj=pack(g.CMD_EXPT, expt, rank, 0, tag), dest=dest, tag=tag)
+        self.comm.Isend([self.clock.inner, MPI.INT], dest=dest, tag=tag + 1)
+        self.log('clock %s' % str(self.clock.inner))
         # self.wk_comm.barrier()
 
     def do_stop(self, rank):
         self.log('stop %d' % rank)
         dest = g.EXPT_MACHINE
         tag = rank
-        self.comm.send(obj=pack(g.CMD_STOP, None, rank, dest, tag), dest=dest, tag=tag)
+        self.comm.isend(obj=pack(g.CMD_STOP, None, rank, dest, tag), dest=dest, tag=tag)
 
     def check_consistency(self, rank):
         return self.clock[rank] - self.clock.get_min() <= g.STALE
