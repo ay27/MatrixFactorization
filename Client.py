@@ -70,9 +70,10 @@ class Client(mp.Process):
                 break
 
     def log(self, msg):
-        if self.log_file is None:
-            return
-        self.log_file.write('%s\n' % msg)
+        return
+        # if self.log_file is None:
+        #     return
+        # self.log_file.write('%s\n' % msg)
 
     def do_pull(self, rank, key):
         self.log('pull %d %d' % (rank, key))

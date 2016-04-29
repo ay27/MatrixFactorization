@@ -27,8 +27,8 @@ class QueryQueue:
 
 class Server:
     def __init__(self, comm, ps_comm):
-        self.log_file = open('log/log_S%d.log' % comm.Get_rank(), 'w')
-        self.log('server init')
+        # self.log_file = open('log/log_S%d.log' % comm.Get_rank(), 'w')
+        # self.log('server init')
         self.comm = comm
         self.ps_comm = ps_comm
         self.store = Store()
@@ -40,7 +40,7 @@ class Server:
         self.STOP = False
         self.log('init finish')
         self.clocks = VectorClock()
-        print('init %s' % str(self.clocks.inner))
+        # print('init %s' % str(self.clocks.inner))
         self.run()
 
     def run(self):
@@ -52,7 +52,7 @@ class Server:
             pack = self.comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=st)
             if not isinstance(pack, dict):
                 if pack == g.CMD_STOP_THE_WORLD:
-                    print('stop the world %d' % self.my_rank)
+                    # print('stop the world %d' % self.my_rank)
                     break
             if pack.get('cmd') == g.CMD_INC:
                 value_buf = np.empty(g.K, dtype=np.float64)
@@ -65,7 +65,7 @@ class Server:
             elif pack.get('cmd') == g.CMD_EXPT:
                 vc_buf = np.empty(g.client_num, dtype=np.int32)
                 self.comm.Recv(vc_buf, source=st.source, tag=st.tag+1)
-                print('server recv from %d %s' % (st.source, str(vc_buf)))
+                # print('server recv from %d %s' % (st.source, str(vc_buf)))
                 self._do_expt(util.Unpack(pack, None, VectorClock(vc_buf)))
 
             elif pack.get('cmd') == g.CMD_STOP:
@@ -82,9 +82,9 @@ class Server:
             self.store[pack.key] = pack.value + value
 
     def _do_pull(self, pack, st):
-        print('do pull %s' % str(self.clocks.inner))
+        # print('do pull %s' % str(self.clocks.inner))
         if self.clocks[pack.src] - self.clocks.get_min() > g.STALE:
-            print('block %d' % pack.src)
+            # print('block %d' % pack.src)
             self.query.insert(pack.key, pack, st)
             return
         value = self.store.get(pack.key)
@@ -102,7 +102,7 @@ class Server:
             self.expt[src].append(value)
         # update server clocks
         self.clocks = util.merge(self.clocks, pack.vc)
-        print('server merge %s' % str(self.clocks.inner))
+        # print('server merge %s' % str(self.clocks.inner))
         self.scan_query()
 
     def _do_stop(self, pack):
@@ -116,21 +116,22 @@ class Server:
             self.comm.isend(g.CMD_STOP_THE_WORLD, dest=ii, tag=ii)
 
     def write_result(self):
-        print('write result')
+        # print('write result')
         self.expt[0] = np.array(self.expt[0])
         for jj in range(1, g.client_num):
             self.expt[0] += np.array(self.expt[jj])
-        f = open('log/result%d.txt' % self.my_rank, 'w')
-        f.write(str(self.expt[0]))
+        f = open('log/result%d.txt' % g.STALE, 'w')
+        f.write(str(list(self.expt[0])))
 
     def log(self, msg):
+        return
         # print('server %s' % msg)
-        self.log_file.write('%s\n' % msg)
+        # self.log_file.write('%s\n' % msg)
 
     def scan_query(self):
         for key, (pack, st) in list(self.query.inner().items()):
             if self.clocks[pack.src] - self.clocks.get_min() <= g.STALE:
-                print('waitup %d' % pack.src)
+                # print('waitup %d' % pack.src)
                 value = self.store.get(pack.key)
                 self.comm.Isend([value, MPI.FLOAT], dest=st.source, tag=st.tag)
                 self.comm.Isend([self.clocks.inner, MPI.INT], dest=st.source, tag=st.tag + 1)

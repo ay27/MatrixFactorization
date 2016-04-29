@@ -15,6 +15,9 @@ def load_data(rank):
         tmp = []
         for ii in range(27):
             row = file.readline().split()
+            if len(row) != 3:
+                print(row)
+                exit(-1)
             tmp.append([int(row[0]), int(row[1]), float(row[2])])
     return tmp
     #     tmp = []
@@ -48,5 +51,5 @@ if __name__ == '__main__':
         print('client')
         local_data = load_data(rank)
         o_t = MPI.Wtime()
-        d_mf(comm, wk_comm, local_data, np.random.rand(len(local_data), g.K), g.K, 100, 0.002, 0.02)
+        d_mf(comm, wk_comm, local_data, np.random.rand(len(local_data), g.K), g.K, 500, 0.002, 0.02)
     print('finish %d, elapsed time = %f' % (rank, MPI.Wtime() - o_t))

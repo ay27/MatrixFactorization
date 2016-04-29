@@ -7,12 +7,12 @@ import numpy
 
 def read_data(file_path):
     tmp = []
-    i=0
-    j=0
+    i = 0
+    j = 0
     with open(file_path, 'r') as file:
         for line in file:
             num = line.split()
-            tmp.append([int(num[0]), int(num[1]), float(num[3])])
+            tmp.append([int(num[0]), int(num[1]), float(num[2])])
             i = max(i, tmp[-1][0])
             j = max(j, tmp[-1][1])
     return i, j, numpy.array(tmp)
@@ -40,13 +40,14 @@ def auto_split_data(datas, I, J, cnt):
 
 if __name__ == '__main__':
     # train_21568528.txt
-    I, J, datas = read_data('movie_718user_all.txt')
-    datas = sorted(datas, key=lambda row:row[0])
-    sets = auto_split_data(datas, I, J, 12)
+    I, J, datas = read_data('9x9_3blocks')
+    datas = sorted(datas, key=lambda row: row[0])
+    sets = auto_split_data(datas, I, J, 4)
     for ii in range(len(sets)):
-        f = open('output12/data_%d.csv' % ii, 'w')
-        writer = csv.writer(f)
-        writer.writerows(sets[ii])
+        row = sets[ii]
+        with open('output/data_%d' % ii, 'w') as f:
+            for rr in row:
+                f.write('%d %d %f\n' % (rr[0], rr[1], rr[2]))
 
 
 

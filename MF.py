@@ -24,6 +24,7 @@ def d_mf(comm, wk_comm, local_data, local_P, k, steps=500, alpha=0.0002, beta=0.
         print('rank %d, iter=%d' % (my_rank, step))
         client.clock(my_rank, e)
         local_Q.clear()
+
         for row in local_data:
             # 需要减去偏移值
             ii = int(row[0] - local_data[0][0])
