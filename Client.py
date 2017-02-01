@@ -70,10 +70,9 @@ class Client(mp.Process):
                 break
 
     def log(self, msg):
-        return
-        # if self.log_file is None:
-        #     return
-        # self.log_file.write('%s\n' % msg)
+        if self.log_file is None:
+            return
+        self.log_file.write('%s\n' % msg)
 
     def do_pull(self, rank, key):
         self.log('pull %d %d' % (rank, key))
@@ -91,7 +90,7 @@ class Client(mp.Process):
 
         dest = find_road(key)
         tag = gen_tag()
-        self.comm.isend(obj=pack(g.CMD_PULL, key, rank, dest, tag), dest=dest, tag=tag)
+        self.comm.send(obj=pack(g.CMD_PULL, key, rank, dest, tag), dest=dest, tag=tag)
         value_buf = np.empty(g.K, dtype=np.float64)
         vc_buf = np.empty(g.client_num, dtype=np.int32)
         self.comm.Recv(value_buf, source=dest, tag=tag)
@@ -115,15 +114,15 @@ class Client(mp.Process):
 
         dest = find_road(key)
         tag = gen_tag()
-        self.comm.isend(obj=pack(g.CMD_INC, key, rank, dest, tag), dest=dest, tag=tag)
-        self.comm.Isend([value, MPI.FLOAT], dest=dest, tag=tag + 1)
+        self.comm.send(obj=pack(g.CMD_INC, key, rank, dest, tag), dest=dest, tag=tag)
+        self.comm.Send([value, MPI.FLOAT], dest=dest, tag=tag + 1)
 
     def do_clock(self, rank, expt):
         self.log('clock %d %f' % (rank, expt))
         dest = g.EXPT_MACHINE
         tag = rank
-        self.comm.isend(obj=pack(g.CMD_EXPT, expt, rank, 0, tag), dest=dest, tag=tag)
-        self.comm.Isend([self.clock.inner, MPI.INT], dest=dest, tag=tag + 1)
+        self.comm.send(obj=pack(g.CMD_EXPT, expt, rank, 0, tag), dest=dest, tag=tag)
+        self.comm.Send([self.clock.inner, MPI.INT], dest=dest, tag=tag + 1)
         self.log('clock %s' % str(self.clock.inner))
         # self.wk_comm.barrier()
 
@@ -131,7 +130,7 @@ class Client(mp.Process):
         self.log('stop %d' % rank)
         dest = g.EXPT_MACHINE
         tag = rank
-        self.comm.isend(obj=pack(g.CMD_STOP, None, rank, dest, tag), dest=dest, tag=tag)
+        self.comm.send(obj=pack(g.CMD_STOP, None, rank, dest, tag), dest=dest, tag=tag)
 
     def check_consistency(self, rank):
         return self.clock[rank] - self.clock.get_min() <= g.STALE

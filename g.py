@@ -8,10 +8,10 @@ CMD_STOP = 'stop'
 CMD_STOP_THE_WORLD = 'stop_the_world'
 CMD_CLOCK = 'clock'
 
-client_num = 4
+client_num = 3
 ps_num = 1
 
-STALE = 1
+STALE = 10
 
 EXPT_MACHINE = client_num + ps_num - 1
 

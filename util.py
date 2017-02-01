@@ -64,6 +64,22 @@ def merge(vc1, vc2):
     return tmp
 
 
+
+# class Store:
+#     class __row:
+#         def __init__(self, value, vc):
+#             self.value = value
+#             self.vc = vc
+#
+#     def __init__(self):
+#         self.store = dict()
+#
+#     def insert(self, key, value, vc):
+#         self.store[key] = Store.__row(value, vc)
+#
+#     def query(self, key):
+#         return self.store.get(key)
+
 class Store(dict):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

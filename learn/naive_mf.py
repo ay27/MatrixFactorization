@@ -38,7 +38,7 @@ def naive_mf(R, P, Q, K, steps=500, alpha=0.0002, beta=0.02):
     return P, Q.T, ee
 
 
-def naive_sparse_mf(log, sparse_R, P, Q, K, steps=500, alpha=0.0002, beta=0.02):
+def naive_sparse_mf(sparse_R, P, Q, K, steps=500, alpha=0.0002, beta=0.02):
     Q = Q.T
     for step in range(steps):
         for row in sparse_R:
@@ -50,9 +50,8 @@ def naive_sparse_mf(log, sparse_R, P, Q, K, steps=500, alpha=0.0002, beta=0.02):
             Q[jj] += alpha * (2 * eij * P[ii] - beta * Q[jj])
         e = 0
         for row in sparse_R:
-            if abs(row[2] - 0.0) > 0.00001:
-                e += pow(row[2] - numpy.dot(P[row[0]-1, :], Q[row[1]-1, :]), 2)
-        log(e)
+            e += pow(row[2] - numpy.dot(P[row[0]-1, :], Q[row[1]-1, :]), 2)
+        print(e)
         if e < 0.001:
             break
     return P, Q.T

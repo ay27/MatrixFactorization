@@ -1,4 +1,5 @@
 # Created by ay27 at 16/3/17
+import csv
 
 import numpy as np
 from mpi4py import MPI
@@ -15,11 +16,9 @@ def load_data(rank):
         tmp = []
         for ii in range(27):
             row = file.readline().split()
-            if len(row) != 3:
-                print(row)
-                exit(-1)
             tmp.append([int(row[0]), int(row[1]), float(row[2])])
     return tmp
+    # with open('data/output1/data_%d.csv' % rank) as file:
     #     tmp = []
     #     reader = csv.reader(file)
     #     for row in reader:
